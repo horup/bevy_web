@@ -193,11 +193,11 @@ pub struct RecvPacket<T : Message> {
     pub msg:T
 }
 
-pub struct BevyWebServerPlugin<T> {
+pub struct BevyWebServerPlugin<T : Message> {
     pub phantom:PhantomData<T>
 }
 
-impl<T> BevyWebServerPlugin<T> {
+impl<T : Message> BevyWebServerPlugin<T> {
     pub fn new() -> Self {
         Self {
             phantom:PhantomData::default()
