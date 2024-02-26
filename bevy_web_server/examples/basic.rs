@@ -11,11 +11,10 @@ enum Msg {
     Pong(u128),
 }
 
-fn server_system(
+fn server_ping_system(
     connections: Query<&Connection>,
     mut writer: EventWriter<bevy_web_server::SendPacket<Msg>>,
     time: Res<Time>,
-    mut reader: EventReader<bevy_web_server::RecvPacket<Msg>>,
 ) {
     for conn in connections.iter() {
         writer.send(SendPacket {
@@ -23,7 +22,12 @@ fn server_system(
             msg: Msg::Ping(time.elapsed().as_millis()),
         });
     }
+}
 
+fn server_recv_system(
+    time: Res<Time>,
+    mut reader: EventReader<bevy_web_server::RecvPacket<Msg>>,
+) {
     for packet in reader.read() {
         match &packet.msg {
             Msg::Ping(_) => {}
@@ -36,7 +40,7 @@ fn server_system(
     }
 }
 
-fn client_system(
+fn client_recv_system(
     mut reader: EventReader<bevy_web_client::RecvPacket<Msg>>,
     mut writer: EventWriter<bevy_web_client::SendPacket<Msg>>,
 ) {
@@ -58,10 +62,11 @@ fn main() {
     let server_thread = std::thread::spawn(move || {
         App::new()
             .add_plugins(BevyWebServerPlugin::new() as BevyWebServerPlugin<Msg>)
+            .insert_resource(bevy_web_server::WebServerSetting { port: 8080 })
             .add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(
                 Duration::from_secs_f32(server_tick_rate),
             )))
-            .add_systems(Update, server_system)
+            .add_systems(Update, (server_ping_system, server_recv_system))
             .run();
     });
     App::new()
@@ -71,7 +76,7 @@ fn main() {
                 client_tick_rate,
             ))),
         )
-        .add_systems(Update, client_system)
+        .add_systems(Update, client_recv_system)
         .run();
 
     server_thread.join().expect("failed to join");

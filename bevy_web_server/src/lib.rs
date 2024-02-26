@@ -5,7 +5,7 @@ use hyper_tungstenite::HyperWebsocket;
 use uuid::Uuid;
 use std::{collections::HashMap, marker::PhantomData, sync::{Arc, Mutex}};
 
-pub struct WebsocketConnection<T>  {
+struct WebsocketConnection<T>  {
     rt:Arc<tokio::runtime::Runtime>,
     sender:tokio::sync::mpsc::Sender<T>,
     is_connected:bool,
@@ -22,7 +22,7 @@ impl<T : Message> WebsocketConnection<T> {
         }
     }
 }
-pub struct WebServerConnectionManager<T> {
+struct WebServerConnectionManager<T> {
     rt:Arc<tokio::runtime::Runtime>,
     websocket_connections:HashMap<Uuid, WebsocketConnection<T>>
 }
@@ -39,11 +39,6 @@ impl<T> WebServerConnectionManager<T> {
 struct WebServer<T> {
     rt:Arc<tokio::runtime::Runtime>,
     connection_manager:Arc<Mutex<WebServerConnectionManager<T>>>,
-}
-
-#[derive(Component)]
-pub struct Connection {
-    pub id:Uuid
 }
 
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -91,7 +86,6 @@ async fn serve_websocket<T : Message>(connection_manager:Arc<Mutex<WebServerConn
     }
 }
 
-
 async fn handle_http_request<T : Message>(connection_manager:Arc<Mutex<WebServerConnectionManager<T>>>, mut request: hyper::Request<hyper::body::Incoming>) -> Result<hyper::Response<http_body_util::Full<hyper::body::Bytes>>, Error> {
     if hyper_tungstenite::is_upgrade_request(&request) {
         match hyper_tungstenite::upgrade(&mut request, None) {
@@ -110,10 +104,11 @@ async fn handle_http_request<T : Message>(connection_manager:Arc<Mutex<WebServer
     }
 }
 
-fn start_webserver<T: Message>(webserver:ResMut<WebServer<T>>) {
+fn start_webserver<T: Message>(webserver:ResMut<WebServer<T>>, web_server_setting:Res<WebServerSetting>) {
     let connection_manager = webserver.connection_manager.clone();
+    let addr = format!("0.0.0.0:{}", &web_server_setting.port);
     webserver.rt.spawn(async move {
-        let addr:std::net::SocketAddr = "0.0.0.0:8080".parse().expect("could not parse address");
+        let addr:std::net::SocketAddr = addr.parse().expect("could not parse address");
         let listener = tokio::net::TcpListener::bind(&addr).await.expect("could not bind to address");
         let mut http = hyper::server::conn::http1::Builder::new();
         http.keep_alive(true);
@@ -205,11 +200,28 @@ impl<T : Message> BevyWebServerPlugin<T> {
     }
 }
 
+#[derive(Resource)]
+pub struct WebServerSetting {
+    pub port:u16
+}
+
+impl Default for WebServerSetting {
+    fn default() -> Self {
+        Self { port: 8080 }
+    }
+}
+
+#[derive(Component)]
+pub struct Connection {
+    pub id:Uuid
+}
+
 impl<T : Message> Plugin for BevyWebServerPlugin<T> {
     fn build(&self, app: &mut App) {
         let rt = Arc::new(tokio::runtime::Runtime::new().expect("failed to create runtime"));
         app.add_event::<SendPacket<T>>();
         app.add_event::<RecvPacket<T>>();
+        app.insert_resource(WebServerSetting::default());
         app.insert_resource::<WebServer<T>>(WebServer {
             rt:rt.clone(),
             connection_manager:Arc::new(std::sync::Mutex::new(WebServerConnectionManager::new(rt.clone())))
