@@ -3,7 +3,7 @@ use bevy_web_client::Message;
 use futures::{SinkExt, StreamExt};
 use hyper_tungstenite::HyperWebsocket;
 use uuid::Uuid;
-use std::{collections::HashMap, marker::PhantomData, mem, sync::{Arc, Mutex}};
+use std::{collections::HashMap, marker::PhantomData, sync::{Arc, Mutex}};
 
 pub struct WebsocketConnection<T>  {
     rt:Arc<tokio::runtime::Runtime>,
@@ -44,16 +44,6 @@ struct WebServer<T> {
 #[derive(Component)]
 pub struct Connection {
     pub id:Uuid
-}
-
-impl<T> WebServer<T> {
-    pub fn connections(&self) -> Vec<Uuid> {
-        let mut connections = Vec::default();
-        for (uuid, _) in self.connection_manager.lock().unwrap().websocket_connections.iter() {
-            connections.push(uuid.clone());
-        }
-        connections
-    }
 }
 
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -144,7 +134,7 @@ fn start_webserver<T: Message>(webserver:ResMut<WebServer<T>>) {
     });
 }
 
-fn check_connections<T: Message>(webserver:ResMut<WebServer<T>>, mut connections:Query<&mut Connection>, mut commands:Commands) {
+fn check_connections<T: Message>(webserver:ResMut<WebServer<T>>, mut commands:Commands) {
     let mut conn_manager = webserver.connection_manager.lock().expect("could not lock ConnectionManager");
     let mut delete = Vec::default();
     for (id, conn) in conn_manager.websocket_connections.iter_mut() {
