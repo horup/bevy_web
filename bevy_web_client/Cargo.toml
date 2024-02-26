@@ -1,0 +1,12 @@
+[package]
+name = "bevy_web_client"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = {workspace = true}
+serde = {workspace = true}
+ewebsock = {workspace = true}
+bincode = {workspace = true}

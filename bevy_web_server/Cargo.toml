@@ -1,0 +1,19 @@
+[package]
+name = "bevy_web_server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy_web_client = {path = "../bevy_web_client"}
+bevy = {workspace = true}
+hyper = {workspace = true}
+hyper-tungstenite = {workspace = true}
+hyper-util = {workspace = true}
+http-body-util = {workspace = true}
+tokio = {workspace = true}
+uuid = {workspace = true}
+futures = { workspace = true }
+serde = {workspace = true}
+bincode = {workspace = true}
