@@ -57,6 +57,7 @@ fn client_recv_system(
 }
 
 fn main() {
+    // start a bevy app as server in a seperate thread.
     let server_tick_rate = 1.0 / 64.0; 
     let client_tick_rate = 0.0; // unlimited;
     let server_thread = std::thread::spawn(move || {
@@ -69,6 +70,8 @@ fn main() {
             .add_systems(Update, (server_ping_system, server_recv_system))
             .run();
     });
+
+    // start a bevy app in the main thread
     App::new()
         .add_plugins(BevyWebClientPlugin::new() as BevyWebClientPlugin<Msg>)
         .add_plugins(
