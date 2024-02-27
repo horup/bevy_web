@@ -33,19 +33,17 @@ struct WebSocket {
 
 #[derive(Resource)]
 struct Client {
-    pub url:String,
     pub socket:Option<Mutex<WebSocket>>
 }
 
 
-fn recv_messages<T:Message>(mut settings:ResMut<ClientSettings>, mut status:ResMut<ClientStatus>, mut client:ResMut<Client>, mut recv_writer:EventWriter<ClientRecvPacket<T>>) {
-    if settings.url != client.url {
+fn recv_messages<T:Message>(settings:Res<ClientSettings>, mut status:ResMut<ClientStatus>, mut client:ResMut<Client>, mut recv_writer:EventWriter<ClientRecvPacket<T>>) {
+    if settings.is_changed() {
         client.socket = None;
     }
     if client.socket.is_none() {
         let url = settings.url.clone();
         let (sender, receiver) = ewebsock::connect(&url).unwrap();
-        client.url = url.clone();
         client.socket = Some(Mutex::new(WebSocket {
             sender,
             receiver,
@@ -121,7 +119,6 @@ impl<T:Message> Plugin for BevyWebClientPlugin<T> {
             is_connected:false
         });
         app.insert_resource(Client {
-            url:Default::default(),
             socket:None
         });
         app.add_systems(First, recv_messages::<T>);
