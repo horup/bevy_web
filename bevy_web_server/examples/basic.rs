@@ -40,10 +40,9 @@ fn server_recv_system(
     }
 }
 
-fn client_is_connected_system(status:Res<ClientStatus>) {
+fn client_is_connected_system(status: Res<ClientStatus>) {
     if status.is_changed() {
         println!("client is_connected={}", status.is_connected);
-
     }
 }
 
@@ -64,17 +63,18 @@ fn client_recv_system(
 }
 
 fn main() {
+    let sleep_time_ms = 0;
     // start a bevy app as server in a seperate thread.
-    let server_tick_rate = 1.0 / 64.0; 
-    let client_tick_rate = 0.0; // unlimited;
     let server_thread = std::thread::spawn(move || {
         App::new()
             .add_plugins(BevyWebServerPlugin::new() as BevyWebServerPlugin<Msg>)
             .insert_resource(bevy_web_server::WebServerSettings { port: 8080 })
-            .add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(
-                Duration::from_secs_f32(server_tick_rate),
-            )))
-            .add_systems(Update, (server_ping_system, server_recv_system))
+            .add_plugins(
+                MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_millis(sleep_time_ms))),
+            )
+            .insert_resource(Time::<Fixed>::from_seconds(1.0))
+            .add_systems(FixedUpdate, server_ping_system)
+            .add_systems(Update, server_recv_system)
             .run();
     });
 
@@ -82,13 +82,9 @@ fn main() {
     App::new()
         .add_plugins(BevyWebClientPlugin::new() as BevyWebClientPlugin<Msg>)
         .insert_resource(bevy_web_client::ClientSettings {
-            url:"ws://localhost:8080".to_owned()
+            url: "ws://localhost:8080".to_owned(),
         })
-        .add_plugins(
-            MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f32(
-                client_tick_rate,
-            ))),
-        )
+        .add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_millis(sleep_time_ms))))
         .add_systems(Update, (client_is_connected_system, client_recv_system))
         .run();
 
