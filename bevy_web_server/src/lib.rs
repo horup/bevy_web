@@ -113,6 +113,7 @@ fn start_webserver<T: Message>(webserver:ResMut<WebServer<T>>, web_server_settin
         http.keep_alive(true);
         loop {
             let Ok((stream, _)) = listener.accept().await else { continue; };
+            let _ = stream.set_nodelay(true);
             let connection_manager = connection_manager.clone();
             let connection = http
             .serve_connection(hyper_util::rt::TokioIo::new(stream), hyper::service::service_fn(move |request: hyper::Request<hyper::body::Incoming>| {
