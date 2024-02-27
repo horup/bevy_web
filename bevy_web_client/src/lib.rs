@@ -36,7 +36,6 @@ struct Client {
     pub socket:Option<Mutex<WebSocket>>
 }
 
-
 fn recv_messages<T:Message>(settings:Res<ClientSettings>, mut status:ResMut<ClientStatus>, mut client:ResMut<Client>, mut recv_writer:EventWriter<ClientRecvPacket<T>>) {
     if settings.is_changed() {
         client.socket = None;
