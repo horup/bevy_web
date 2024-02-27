@@ -82,7 +82,6 @@ async fn serve_websocket<T : Message>(connection_manager:Arc<Mutex<WebServerConn
 
         let mut connection_manager = connection_manager.lock().expect("could not acquire mutex in serve_websocket");
         connection_manager.websocket_connections.get_mut(&uuid).expect("failed to get WebSocketConnection").is_connected = false;
-        println!("{} Disconnected", uuid);
     }
 }
 
