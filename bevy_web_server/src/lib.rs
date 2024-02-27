@@ -104,7 +104,7 @@ async fn handle_http_request<T : Message>(connection_manager:Arc<Mutex<WebServer
     }
 }
 
-fn start_webserver<T: Message>(webserver:ResMut<WebServer<T>>, web_server_setting:Res<WebServerSetting>) {
+fn start_webserver<T: Message>(webserver:ResMut<WebServer<T>>, web_server_setting:Res<WebServerSettings>) {
     let connection_manager = webserver.connection_manager.clone();
     let addr = format!("0.0.0.0:{}", &web_server_setting.port);
     webserver.rt.spawn(async move {
@@ -155,11 +155,11 @@ fn check_connections<T: Message>(webserver:ResMut<WebServer<T>>, mut commands:Co
     }
 }
 
-fn recv_messages<T: Message>(webserver:ResMut<WebServer<T>>, mut recv_writer:EventWriter<RecvPacket<T>>) {
+fn recv_messages<T: Message>(webserver:ResMut<WebServer<T>>, mut recv_writer:EventWriter<ServerRecvPacket<T>>) {
     let mut conn_manager = webserver.connection_manager.lock().expect("could not lock ConnectionManager");
     for (uuid, conn) in conn_manager.websocket_connections.iter_mut() {
         for msg in conn.messages.drain(..) {
-            recv_writer.send(RecvPacket {
+            recv_writer.send(ServerRecvPacket {
                 connection:uuid.clone(),
                 msg
             });
@@ -167,7 +167,7 @@ fn recv_messages<T: Message>(webserver:ResMut<WebServer<T>>, mut recv_writer:Eve
     }
 }
 
-fn send_messages<T: Message>(webserver:ResMut<WebServer<T>>, mut send_writer:EventReader<SendPacket<T>>) {
+fn send_messages<T: Message>(webserver:ResMut<WebServer<T>>, mut send_writer:EventReader<ServerSendPacket<T>>) {
     let mut conn_manager = webserver.connection_manager.lock().expect("could not lock ConnectionManager");
     for send in send_writer.read() {
         if let Some(conn) = conn_manager.websocket_connections.get_mut(&send.connection_id) {
@@ -177,13 +177,13 @@ fn send_messages<T: Message>(webserver:ResMut<WebServer<T>>, mut send_writer:Eve
 }
 
 #[derive(Event)]
-pub struct SendPacket<T : Message> {
+pub struct ServerSendPacket<T : Message> {
     pub connection_id:Uuid,
     pub msg:T
 }
 
 #[derive(Event)]
-pub struct RecvPacket<T : Message> {
+pub struct ServerRecvPacket<T : Message> {
     pub connection:Uuid,
     pub msg:T
 }
@@ -201,11 +201,11 @@ impl<T : Message> BevyWebServerPlugin<T> {
 }
 
 #[derive(Resource)]
-pub struct WebServerSetting {
+pub struct WebServerSettings {
     pub port:u16
 }
 
-impl Default for WebServerSetting {
+impl Default for WebServerSettings {
     fn default() -> Self {
         Self { port: 8080 }
     }
@@ -219,9 +219,9 @@ pub struct Connection {
 impl<T : Message> Plugin for BevyWebServerPlugin<T> {
     fn build(&self, app: &mut App) {
         let rt = Arc::new(tokio::runtime::Runtime::new().expect("failed to create runtime"));
-        app.add_event::<SendPacket<T>>();
-        app.add_event::<RecvPacket<T>>();
-        app.insert_resource(WebServerSetting::default());
+        app.add_event::<ServerSendPacket<T>>();
+        app.add_event::<ServerRecvPacket<T>>();
+        app.insert_resource(WebServerSettings::default());
         app.insert_resource::<WebServer<T>>(WebServer {
             rt:rt.clone(),
             connection_manager:Arc::new(std::sync::Mutex::new(WebServerConnectionManager::new(rt.clone())))

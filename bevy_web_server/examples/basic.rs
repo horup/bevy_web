@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use bevy::{app::ScheduleRunnerPlugin, prelude::*};
-use bevy_web_client::BevyWebClientPlugin;
-use bevy_web_server::{BevyWebServerPlugin, Connection, SendPacket};
+use bevy_web_client::{BevyWebClientPlugin, ClientStatus};
+use bevy_web_server::{BevyWebServerPlugin, Connection, ServerSendPacket};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -13,11 +13,11 @@ enum Msg {
 
 fn server_ping_system(
     connections: Query<&Connection>,
-    mut writer: EventWriter<bevy_web_server::SendPacket<Msg>>,
+    mut writer: EventWriter<bevy_web_server::ServerSendPacket<Msg>>,
     time: Res<Time>,
 ) {
     for conn in connections.iter() {
-        writer.send(SendPacket {
+        writer.send(ServerSendPacket {
             connection_id: conn.id.clone(),
             msg: Msg::Ping(time.elapsed().as_millis()),
         });
@@ -26,7 +26,7 @@ fn server_ping_system(
 
 fn server_recv_system(
     time: Res<Time>,
-    mut reader: EventReader<bevy_web_server::RecvPacket<Msg>>,
+    mut reader: EventReader<bevy_web_server::ServerRecvPacket<Msg>>,
 ) {
     for packet in reader.read() {
         match &packet.msg {
@@ -40,14 +40,21 @@ fn server_recv_system(
     }
 }
 
+fn client_is_connected_system(status:Res<ClientStatus>) {
+    if status.is_changed() {
+        println!("client is_connected={}", status.is_connected);
+
+    }
+}
+
 fn client_recv_system(
-    mut reader: EventReader<bevy_web_client::RecvPacket<Msg>>,
-    mut writer: EventWriter<bevy_web_client::SendPacket<Msg>>,
+    mut reader: EventReader<bevy_web_client::ClientRecvPacket<Msg>>,
+    mut writer: EventWriter<bevy_web_client::ClientSendPacket<Msg>>,
 ) {
     for packet in reader.read() {
         match &packet.msg {
             Msg::Ping(ms) => {
-                writer.send(bevy_web_client::SendPacket {
+                writer.send(bevy_web_client::ClientSendPacket {
                     msg: Msg::Pong(ms.to_owned()),
                 });
             }
@@ -63,7 +70,7 @@ fn main() {
     let server_thread = std::thread::spawn(move || {
         App::new()
             .add_plugins(BevyWebServerPlugin::new() as BevyWebServerPlugin<Msg>)
-            .insert_resource(bevy_web_server::WebServerSetting { port: 8080 })
+            .insert_resource(bevy_web_server::WebServerSettings { port: 8080 })
             .add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(
                 Duration::from_secs_f32(server_tick_rate),
             )))
@@ -74,12 +81,15 @@ fn main() {
     // start a bevy app in the main thread
     App::new()
         .add_plugins(BevyWebClientPlugin::new() as BevyWebClientPlugin<Msg>)
+        .insert_resource(bevy_web_client::ClientSettings {
+            url:"ws://localhost:8080".to_owned()
+        })
         .add_plugins(
             MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f32(
                 client_tick_rate,
             ))),
         )
-        .add_systems(Update, client_recv_system)
+        .add_systems(Update, (client_is_connected_system, client_recv_system))
         .run();
 
     server_thread.join().expect("failed to join");

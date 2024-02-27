@@ -7,23 +7,25 @@ pub trait Message : Send + Sync + Clone + Serialize + DeserializeOwned + 'static
 impl<T> Message for T where T : Send + Sync + Clone + Serialize + DeserializeOwned + 'static {}
 
 #[derive(Resource)]
-pub struct WebClientInfo {
+pub struct ClientSettings {
     pub url:String,
-    pub is_connected:bool
 }
 
+#[derive(Resource, Default)]
+pub struct ClientStatus {
+    pub is_connected:bool,
+}
+
+
 #[derive(Event)]
-pub struct SendPacket<T:Message> {
+pub struct ClientSendPacket<T:Message> {
     pub msg:T
 }
 
 #[derive(Event)]
-pub struct RecvPacket<T:Message> {
+pub struct ClientRecvPacket<T:Message> {
     pub msg:T
 }
-
-
-
 struct WebSocket {
     pub sender:WsSender,
     pub receiver:WsReceiver
@@ -36,12 +38,12 @@ struct Client {
 }
 
 
-fn recv_messages<T:Message>(mut info:ResMut<WebClientInfo>, mut client:ResMut<Client>, mut recv_writer:EventWriter<RecvPacket<T>>) {
-    if info.url != client.url {
+fn recv_messages<T:Message>(mut settings:ResMut<ClientSettings>, mut status:ResMut<ClientStatus>, mut client:ResMut<Client>, mut recv_writer:EventWriter<ClientRecvPacket<T>>) {
+    if settings.url != client.url {
         client.socket = None;
     }
     if client.socket.is_none() {
-        let url = info.url.clone();
+        let url = settings.url.clone();
         let (sender, receiver) = ewebsock::connect(&url).unwrap();
         client.url = url.clone();
         client.socket = Some(Mutex::new(WebSocket {
@@ -56,13 +58,13 @@ fn recv_messages<T:Message>(mut info:ResMut<WebClientInfo>, mut client:ResMut<Cl
         while let Some(msg) = socket.receiver.try_recv() {
             match msg {
                 ewebsock::WsEvent::Opened => {
-                    info.is_connected = true;
+                    status.is_connected = true;
                 },
                 ewebsock::WsEvent::Message(msg) => {
                     match msg {
                         ewebsock::WsMessage::Binary(bytes) => {
                             let Ok(msg) = bincode::deserialize::<T>(&bytes) else { break; };
-                            recv_writer.send(RecvPacket { msg: msg });
+                            recv_writer.send(ClientRecvPacket { msg: msg });
                         },
                         _=>{}
                     }
@@ -79,12 +81,12 @@ fn recv_messages<T:Message>(mut info:ResMut<WebClientInfo>, mut client:ResMut<Cl
         }
     }
     if recreate {
-        info.is_connected = false;
+        status.is_connected = false;
         client.socket = None;
     }
 }
 
-fn send_messages<T:Message>(mut send_writer:EventReader<SendPacket<T>>, client:ResMut<Client>) {
+fn send_messages<T:Message>(mut send_writer:EventReader<ClientSendPacket<T>>, client:ResMut<Client>) {
     let mut messages = Vec::with_capacity(64);
     for msg in send_writer.read() {
         messages.push(&msg.msg);
@@ -110,10 +112,12 @@ impl<T> BevyWebClientPlugin<T> {
 }
 impl<T:Message> Plugin for BevyWebClientPlugin<T> {
     fn build(&self, app: &mut App) {
-        app.add_event::<SendPacket<T>>();
-        app.add_event::<RecvPacket<T>>();
-        app.insert_resource(WebClientInfo {
-            url:"ws://localhost:8080".to_string(),
+        app.add_event::<ClientSendPacket<T>>();
+        app.add_event::<ClientRecvPacket<T>>();
+        app.insert_resource(ClientSettings {
+            url:"ws://localhost:8080".to_string()
+        });
+        app.insert_resource(ClientStatus {
             is_connected:false
         });
         app.insert_resource(Client {
