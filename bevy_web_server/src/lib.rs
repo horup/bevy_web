@@ -1,9 +1,11 @@
 use bevy::prelude::*;
 use bevy_web_client::Message;
 use futures::{SinkExt, StreamExt};
+use http_body_util::BodyExt;
+use hyper::{Response, StatusCode};
 use hyper_tungstenite::HyperWebsocket;
 use uuid::Uuid;
-use std::{collections::HashMap, marker::PhantomData, sync::{Arc, Mutex}};
+use std::{collections::HashMap, convert::Infallible, marker::PhantomData, sync::{Arc, Mutex}};
 
 struct WebsocketConnection<T>  {
     rt:Arc<tokio::runtime::Runtime>,
@@ -40,8 +42,6 @@ struct WebServer<T> {
     rt:Arc<tokio::runtime::Runtime>,
     connection_manager:Arc<Mutex<WebServerConnectionManager<T>>>,
 }
-
-type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 async fn serve_websocket<T : Message>(connection_manager:Arc<Mutex<WebServerConnectionManager<T>>>, websocket:HyperWebsocket) {
     if let Ok(websocket) = websocket.await {
@@ -84,14 +84,20 @@ async fn serve_websocket<T : Message>(connection_manager:Arc<Mutex<WebServerConn
         connection_manager.websocket_connections.get_mut(&uuid).expect("failed to get WebSocketConnection").is_connected = false;
     }
 }
-
-async fn handle_http_request<T : Message>(connection_manager:Arc<Mutex<WebServerConnectionManager<T>>>, mut request: hyper::Request<hyper::body::Incoming>) -> Result<hyper::Response<http_body_util::Full<hyper::body::Bytes>>, Error> {
+type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+async fn handle_http_request<T : Message>(connection_manager:Arc<Mutex<WebServerConnectionManager<T>>>, mut request: hyper::Request<hyper::body::Incoming>) -> Result<hyper::Response<http_body_util::combinators::BoxBody<hyper::body::Bytes, Infallible>>, Error> {
     if hyper_tungstenite::is_upgrade_request(&request) {
         match hyper_tungstenite::upgrade(&mut request, None) {
             Ok((response, websocket)) => {
                 tokio::spawn(async move {
                     serve_websocket(connection_manager, websocket).await;
                 });
+                let status = response.status();
+                let headers = response.headers().clone();
+                let boxed = response.boxed();
+                let mut response = Response::new(boxed);
+                *response.headers_mut() = headers;
+                *response.status_mut() = status;
                 return Ok(response);
             },
             Err(err) => {
@@ -99,7 +105,38 @@ async fn handle_http_request<T : Message>(connection_manager:Arc<Mutex<WebServer
             },
         }
     } else {
-        Ok(hyper::Response::new(http_body_util::Full::new(hyper::body::Bytes::new())))
+        let static_ = hyper_staticfile::Static::new("public");
+        let resp = static_.serve(request).await;
+        match resp {
+            Ok(resp) => {
+                let headers = resp.headers().clone();
+                let status = resp.status();
+                let bytes = resp.into_body().collect().await;
+                match bytes {
+                    Ok(bytes) => {
+                        let boxed = bytes.boxed();
+                        let mut response = Response::new(boxed);
+                        *response.headers_mut() = headers;
+                        *response.status_mut() = status;
+                        return Ok(response);
+                    },
+                    Err(err) => return Err(Box::new(err)),
+                }
+            },
+            Err(err) => return Err(Box::new(err)),
+        }
+    }
+}
+
+async fn test123(mut request: hyper::Request<hyper::body::Incoming>) -> Result<hyper::Response<http_body_util::combinators::BoxBody<hyper::body::Bytes, std::io::Error>>, ()> {
+    let static_ = hyper_staticfile::Static::new("public");
+    let resp = static_.serve(request).await;
+    match resp {
+        Ok(resp) => {
+            let boxed = resp.boxed();
+            return Ok(Response::new(boxed));
+        },
+        Err(_) => return Err(()),
     }
 }
 
@@ -112,6 +149,7 @@ fn start_webserver<T: Message>(webserver:ResMut<WebServer<T>>, web_server_settin
         let mut http = hyper::server::conn::http1::Builder::new();
         http.keep_alive(true);
         loop {
+            let service = hyper::service::service_fn(test123);
             let Ok((stream, _)) = listener.accept().await else { continue; };
             let _ = stream.set_nodelay(true);
             let connection_manager = connection_manager.clone();
