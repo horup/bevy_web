@@ -5,3 +5,5 @@ This experimental repository contains two bevy plugins: `bevy_web_client` and `b
 `bevy_web_client` provides web-socket client functionality, allowing connection to a websocket server. 
 
 Messages are sent back and forth using the bevy event system. 
+
+In addition files and folders under 'public' is served.
